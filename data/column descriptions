@@ -1,0 +1,11 @@
+colnames:
+('Country',
+ 'country.area.cultivated%',
+ 'Human.Devel.Index(0-1)',
+ 'Internal.renewable.water.resources.per.capita(m3/inhab/yr)', 
+ 'Total.renewable.water.resources.per.capita(m3/inhab/yr)',
+ 'Flood.occurance(WRI.index.0-5)',
+ 'Total.water.withdrawal.per.capita(m3/inhab/yr)',
+ 'SDG.water.stress%',
+ 'Longterm.avg.annual.precip.volumne(10^9m3/year)',
+ 'Pop.with.access.to.safe.drinking.water%')
