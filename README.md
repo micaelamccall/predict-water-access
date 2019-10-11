@@ -4,11 +4,11 @@
 
 # Intro
 
-The World Bank reports a massive amount of data on what at first pass seems like disparate topics such as gender equality and water stress. However the World Bank ties together these metrics in order to measure broad themes such as [sustainable development](https://datatopics.worldbank.org/world-development-indicators/wdi-and-the-sustainable-development-goals.html). 
+The World Bank reports a massive amount of data on what at first pass seems like disparate topics such as gender equality and water stress, but which are related under the umbrella of [sustainable development goals](https://datatopics.worldbank.org/world-development-indicators/wdi-and-the-sustainable-development-goals.html). 
 
 It is fascinating to explore the purpored relationship between these measures and thier effect on the well-being of populations. To this intent, I explored the World Bank's [Environment, Social, And Governance (ESG)](https://datacatalog.worldbank.org/dataset/environment-social-and-governance-data) Dataset, that provide information on 17 key sustainability themes for numerous countries and geographical regions. 
 
-How does one measure well-being? One rough proxy is lifespan. Obviously, factors such as clean water and good healthcare can affect lifespan; but we are discovering that even factors such as [intergenerational stress](https://epigeneticsandchromatin.biomedcentral.com/articles/10.1186/s13072-017-0145-1) can have an effect on lifespan. Thus, I constructed a multilinear model to predict average lifespan of a country based on a number of other variables reported in the ESG dataset. 
+How does one measure well-being? One rough proxy is lifespan. Obviously, factors such as clean water and good healthcare can affect lifespan; but we are discovering that even factors such as [intergenerational stress](https://epigeneticsandchromatin.biomedcentral.com/articles/10.1186/s13072-017-0145-1) can have an effect on lifespan. Thus, I constructed a multilinear regression model to predict average lifespan of a country based on a number of other variables reported in the ESG dataset. 
 
 ## To use RStudio:
 - Clone this repo and run setup.R to install and attach the required packages
