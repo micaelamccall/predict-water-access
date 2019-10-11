@@ -1,6 +1,6 @@
 library(plotly)
 
-wb_transformed<-read.csv("data/wb_scaled.csv",row.names = 1)
+wb_transformed<-read.csv("data/wb_transformed.csv",row.names = 1)
 
 # Visualize some relationships between the data
 
