@@ -3,15 +3,242 @@ title: "Predicting life expectancy from World Bank data"
 output: html_notebook
 ---
 
-In this project we'll explore the relationship between sustainability measures reported by the World Bank and country-wide mean life expectancy. We perform mutiliniear regression and creat a model to predict life expectancy from Environment, Social, And Governance Data. 
+In this project, I explored the relationship between sustainable development indicators reported by the World Bank and life expectancy. I perform mutiliniear regression and create a model to predict country-wide mean life expectancy using variables reported in the Environment, Social, and Governance (ESG) dataset. For me it is fascinating to explore the effect of this myriad of factors on individual well-being. Life-expectancy can be a rough proxy for well-being because many factors, such as clean water and good healthcare, to intergeneration stress, have been shown to affect lifespan. 
 
+## Setup
+Install/attach required packages
 ```{r}
-plot(cars)
+p<-.libPaths() #where your packages are installed 
+`%notin%` <- Negate(`%in%`)
+
+pkgs<-c('dplyr', 'tidyr', 'ggplot2', 'corrplot', 'psych', 'plotly') # packages needed for this project
+
+for (i in 1:length(pkgs)){
+  pkg<-pkgs[[i]]
+  if (pkg %notin% rownames(installed.packages())){
+    install.packages(pkg, p)
+  }
+  if (pkg %notin% rownames(installed.packages())){
+    print(paste("Error installing ", pkg, ". Check Warnings."))
+  }
+}
 ```
 
-Add a new chunk by clicking the *Insert Chunk* button on the toolbar or by pressing *Cmd+Option+I*.
 
-When you save the notebook, an HTML file containing the code and output will be saved alongside it (click the *Preview* button or press *Cmd+Shift+K* to preview the HTML file). 
+# First, start by loading the data from the data folder
+```{r}
+library(tidyr)
+library(dplyr)
 
-The preview shows you a rendered HTML copy of the contents of the editor. Consequently, unlike *Knit*, *Preview* does not run any R code chunks. Instead, the output of the chunk when it was last run in the editor is displayed.
+header<- read.csv("../data/ESGData.csv", nrows = 1) # load the header separately
+wb <- read.csv("../data/ESGData.csv", header= FALSE, skip = 3084) # load the data itself
+colnames(wb)<-colnames(header) # assign column names
+rm(header) #clean up by removing extra assignment
+```
+
+
+# There are many missing values in the data, so I decided to average measurements per country over 2013-2017. The code below tidies and averages indicator values accross years.
+```{r}
+wb_tidy<-wb%>% 
+  select(Country.Name, Indicator.Name, X2013, X2014, X2015, X2016, X2017)%>% # select recent years
+  droplevels()%>% # reset index
+  gather(Year, Value, -Country.Name, -Indicator.Name)%>%    # make 1 row for each year for each indicator
+  group_by(Country.Name, Indicator.Name)%>%  # group by country and indicator and average the value over all years listed 
+  summarise(Avg.Value=mean(Value, na.rm = TRUE))%>%
+  spread(Indicator.Name, Avg.Value) # make each row one country and each column a different indicator
+
+# List all the indicators
+colnames(wb_tidy)
+```
+
+# I took a look at how many NAs were in each variable and selected some variables with minimal missing values to use for further analysis. The code below creates a new data frame with the data selected for regression analysis.
+
+```{r}
+wb_select <- wb_tidy%>%
+  select(c(Country.Name,  #select columns
+           `Renewable electricity output (% of total electricity output)`,
+           `Access to electricity (% of population)`, 
+           `Renewable energy consumption (% of total final energy consumption)`,
+           `Terrestrial and marine protected areas (% of total territorial area)`, 
+           `Agricultural land (% of land area)`,  
+           `Individuals using the Internet (% of population)`,
+           `CO2 emissions (metric tons per capita)`, 
+           `GDP growth (annual %)`,
+           `Political Stability and Absence of Violence/Terrorism: Estimate`,
+           `Rule of Law: Estimate`,
+           `Government Effectiveness: Estimate`,
+           `PM2.5 air pollution, mean annual exposure (micrograms per cubic meter)`,
+           `Proportion of seats held by women in national parliaments (%)`,
+           `Access to clean fuels and technologies for cooking (% of population)`,
+           `Labor force participation rate, total (% of total population ages 15-64) (modeled ILO estimate)`,
+           `Unemployment, total (% of total labor force) (modeled ILO estimate)`,
+           `School enrollment, primary (% gross)`,
+           `Cause of death, by communicable diseases and maternal, prenatal and nutrition conditions (% of total)`,
+           `Adjusted savings: natural resources depletion (% of GNI)`,
+           `Prevalence of undernourishment (% of population)`,
+           `Life expectancy at birth, total (years)`))%>%
+  na.omit()%>%  # remove NAs
+  ungroup()
+```
+
+# Next, we'll visually explore the data and check for skewness. 
+
+```{r}
+wb_select<-read.csv("../data/wb_tidy.csv", row.names = 1)
+library(ggplot2)
+
+check_skew<-gather(wb_select, Measure, Value, -Country)  # reshape the dataframe for plotting
+
+for (i in unique(check_skew$Measure)){  #plot a histogram for each indicator
+  plot<-ggplot(check_skew[check_skew$Measure==i,], aes(Value))+
+    geom_histogram(bins = 100)+
+    labs(title=paste(i))
+  print(plot)
+}
+
+rm(check_skew) #remove this dataframe so it doesnt clutter our environment
+```
+Most of these variables are right skewed, so they could be transformed with a log transformation
+# Below, some columns are log-transformed
+```{r}
+wb_log<-wb_select%>%
+  mutate_at(vars(Renewable.electricity.output, 
+                 Renewable.energy.consumption, 
+                 Terrestrial.and.marine.protected.areas, 
+                 CO2.emissions, 
+                 PM2.5.air.pollution, 
+                 Unemployment, 
+                 Cause.of.death.communicable.diseases.and.maternal.prenatal.and.nutrition.conditions, 
+                 natural.resources.depletion,
+                 Prevalence.of.undernourishment), ~log10(1+.))%>% # log after adding 1 to make all data positive
+  mutate_at(vars(Access.to.electricity, 
+                 Access.to.clean.fuels.and.technologies.for.cooking), ~log10(101-.)) 
+# left skewed variable transformed after subtracted from 110 to turn it into a left skew
+```
+
+# Next, the data is re-scaled to a mean of 0 and a standard deviation of 1 because regression performs better on data that is uniformly scaled
+
+```{r}
+wb_scaled<-wb_log%>%
+  mutate_at(c('Renewable.electricity.output',
+               'Access.to.electricity', 
+               'Renewable.energy.consumption',
+               'Terrestrial.and.marine.protected.areas', 
+               'Agricultural.land',  
+               'Individuals.using.the.Internet',
+               'CO2.emissions', 
+               'GDP.growth',
+               'Political.Stability.and.Absence.of.Terrorism',
+               'Rule.of.Law',
+               'Government.Effectiveness',
+               'PM2.5.air.pollution',
+               'Proportion.of.seats.held.by.women.in.parliaments',
+               'Access.to.clean.fuels.and.technologies.for.cooking',
+               'Labor.force.participation.rate',
+               'Unemployment',
+               'School.enrollment',
+               'Cause.of.death.communicable.diseases.and.maternal.prenatal.and.nutrition.conditions',
+               'natural.resources.depletion',
+               'Prevalence.of.undernourishment',
+               'Life.expectancy.at.birth'), ~scale(.))
+
+```
+
+# Here we visualize the transformed data to make sure the transformation worked as anticipated
+```{r}
+check_scaling<-gather(wb_scaled, Measure, Value, -Country) # re-shape for plotting
+check_scaling$Measure<-as.factor(check_scaling$Measure) 
+
+ggplot(check_scaling, aes(Value))+ # make histograms
+  geom_histogram(bins = 100)+
+  facet_wrap(~Measure,strip.position = "bottom")
+rm(check_scaling) #remove this dataframe so it doesnt clutter our environment
+```
+
+Now the data looks way more normally distributed 
+
+
+# Start exploring the data by visualizing the correlations between each variable
+
+```{r}
+wb_transformed<-read.csv("../data/wb_transformed.csv",row.names = 1)
+library(psych)
+pairs.panels(wb_transformed[,2:10],
+             method = "pearson",
+             hist.col = "#00AFBB")
+```
+
+# Here is another way to visualize correlations that I like to use
+```{r}
+library(corrplot)
+corrplot(cor(wb_transformed[2:10]),order="hclust",tl.col="black",tl.cex=.62)
+```
+
+# Now I want to take a peek at the relationship between life expectancy and the other variables 
+```{r}
+# re-shape the data for plotting
+wb_long<-gather(wb_transformed, Measure, Value, -Country, -Life.expectancy.at.birth)
+wb_long$Measure<-as.factor(wb_long$Measure)
+
+ggplot(wb_long, aes(x=Value,y=Life.expectancy.at.birth))+
+  geom_point(size=1,color='forestgreen')+
+  facet_wrap(~Measure,strip.position = "bottom")
+```
+
+# Now it's time to make the multilinear model. 
+
+I start by constructing a full model with all the variables
+
+```{r}
+fullmodel<-lm(Life.expectancy.at.birth ~ 
+                Renewable.electricity.output + 
+                Access.to.electricity + 
+                Renewable.energy.consumption + 
+                Terrestrial.and.marine.protected.areas +
+                Agricultural.land +
+                Individuals.using.the.Internet +
+                CO2.emissions +
+                GDP.growth +
+                Political.Stability.and.Absence.of.Terrorism +
+                Rule.of.Law +
+                Government.Effectiveness +
+                PM2.5.air.pollution +
+                Proportion.of.seats.held.by.women.in.parliaments +
+                Access.to.clean.fuels.and.technologies.for.cooking +
+                Labor.force.participation.rate +
+                Unemployment +
+                School.enrollment +
+                Cause.of.death.communicable.diseases.and.maternal.prenatal.and.nutrition.conditions +
+                natural.resources.depletion +
+                Prevalence.of.undernourishment, data=wb_transformed)
+```
+
+
+Then, we use backward elimination to select the variables that are predictive of life expectancy
+
+```{r}
+step(fullmodel,direction="backward",trace=10)
+```
+
+
+# Backward elimination shows us the combination of variables that can be used to predict the life expectancy. 
+Here, we assign this model to a new variable and inspect it closer to see which variables have the most significant relationship with life expectancy.
+
+```{r}
+model = lm(Life.expectancy.at.birth ~ Access.to.electricity + 
+     Renewable.energy.consumption + Agricultural.land + CO2.emissions + 
+     Government.Effectiveness + PM2.5.air.pollution + Proportion.of.seats.held.by.women.in.parliaments + 
+     Unemployment + Cause.of.death.communicable.diseases.and.maternal.prenatal.and.nutrition.conditions + 
+     natural.resources.depletion, data = wb_transformed)
+summary(model)
+```
+
+# Here, we inspect the residuals of the model
+It's important to inspect the residuals of the model. If they aren't normally distributed or follow a non-linear pattern, this indicates that the model is not fit optimally. 
+
+```{r}
+plot(fitted(model),residuals(model)) # with this plot, we are look for absence of a pattern
+hist(residuals(model)) # with the histogram, we're looking for a normal distribution
+qqnorm(residuals(model)) # with the qqnorm plot, we are looking for a straight line
+```
 

@@ -1,28 +1,29 @@
-ibrary(tidyr)
+library(tidyr)
 library(dplyr)
 
 # Read in the data 
-header<- read.csv("data/ESGData.csv", nrows = 1)
-wb <- read.csv("data/ESGData.csv", header= FALSE, skip = 3084)
-colnames(wb)<-colnames(header)
-rm(header)
+header<- read.csv("data/ESGData.csv", nrows = 1)  # load the header separately
+wb <- read.csv("data/ESGData.csv", header= FALSE, skip = 3084) # load the data itself
+colnames(wb)<-colnames(header) # assign column names
+rm(header) #clean up by removing extra assignment
 
 
-wb_tidy<-wb%>%
-  select(Country.Name, Indicator.Name, X2013, X2014, X2015, X2016, X2017)%>%
-  droplevels()%>%  
-  gather(Year, Value, -Country.Name, -Indicator.Name)%>%    
-  group_by(Country.Name, Indicator.Name)%>% 
+wb_tidy<-wb%>% 
+  select(Country.Name, Indicator.Name, X2013, X2014, X2015, X2016, X2017)%>% # select recent years
+  droplevels()%>% # reset index
+  gather(Year, Value, -Country.Name, -Indicator.Name)%>%    # make 1 row for each year for each indicator
+  group_by(Country.Name, Indicator.Name)%>%  # group by country and indicator and average the value over all years listed 
   summarise(Avg.Value=mean(Value, na.rm = TRUE))%>%
-  spread(Indicator.Name, Avg.Value)
+  spread(Indicator.Name, Avg.Value) # make each row one country and each column a different indicator
 
 
-
+# Look at the NAs in each variable
 sort(colSums(is.na(wb_tidy)))
 levels(wb$Country.Name)
 
+# Select some variables with the least missing values
 wb_select <- wb_tidy%>%
-  select(c(Country.Name, 
+  select(c(Country.Name,  #select columns
            `Renewable electricity output (% of total electricity output)`,
            `Access to electricity (% of population)`, 
            `Renewable energy consumption (% of total final energy consumption)`,
@@ -44,11 +45,12 @@ wb_select <- wb_tidy%>%
            `Adjusted savings: natural resources depletion (% of GNI)`,
            `Prevalence of undernourishment (% of population)`,
            `Life expectancy at birth, total (years)`))%>%
-  na.omit()%>%
+  na.omit()%>%  # remove NAs
   ungroup()
 
+# Rename columns
 colnames(wb_select) <- c('Country', 
-                            'Renewable.electricity output',
+                            'Renewable.electricity.output',
                             'Access.to.electricity', 
                             'Renewable.energy.consumption',
                             'Terrestrial.and.marine.protected.areas', 
@@ -60,7 +62,7 @@ colnames(wb_select) <- c('Country',
                             'Rule.of.Law',
                             'Government.Effectiveness',
                             'PM2.5.air.pollution',
-                            'Proportion.of.seats.held.by women.in.parliaments',
+                            'Proportion.of.seats.held.by.women.in.parliaments',
                             'Access.to.clean.fuels.and.technologies.for.cooking',
                             'Labor.force.participation.rate',
                             'Unemployment',

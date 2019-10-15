@@ -4,14 +4,14 @@
 
 # Intro
 
-The World Bank reports a massive amount of data on what at first pass seems like disparate topics such as gender equality and water stress, but which are related under the umbrella of [sustainable development goals](https://datatopics.worldbank.org/world-development-indicators/wdi-and-the-sustainable-development-goals.html). 
+The World Bank reports a massive amount of [Environment, Social, And Governance (ESG)](https://datacatalog.worldbank.org/dataset/environment-social-and-governance-data) data  for numerous countries and geographical regions. The World Bank's [sustainable development goals](https://datatopics.worldbank.org/world-development-indicators/wdi-and-the-sustainable-development-goals.html) aim to improve these measures in order to improve the well-being of populations.
 
-It is fascinating to explore the purpored relationship between these measures and thier effect on the well-being of populations. To this intent, I explored the World Bank's [Environment, Social, And Governance (ESG)](https://datacatalog.worldbank.org/dataset/environment-social-and-governance-data) Dataset, that provide information on 17 key sustainability themes for numerous countries and geographical regions. 
+For me, it is fascinating that this myriad of measures can have such a significant impact on the well-being of populations. How does one measure well-being? One rough proxy is lifespan. Obviously, factors such as clean water and good healthcare can affect lifespan; but we are discovering that even factors such as [intergenerational stress](https://epigeneticsandchromatin.biomedcentral.com/articles/10.1186/s13072-017-0145-1) can have an effect on lifespan. 
 
-How does one measure well-being? One rough proxy is lifespan. Obviously, factors such as clean water and good healthcare can affect lifespan; but we are discovering that even factors such as [intergenerational stress](https://epigeneticsandchromatin.biomedcentral.com/articles/10.1186/s13072-017-0145-1) can have an effect on lifespan. Thus, I constructed a multilinear regression model to predict average lifespan of a country based on a number of other variables reported in the ESG dataset. 
+In this project, I explored the relationship between sustainable development indicators reported by the World Bank and life expectancy. I perform mutiliniear regression and create a model to predict country-wide mean life expectancy using variables reported in the ESG dataset.
 
-## To use RStudio:
-- Clone this repo and run setup.R to install and attach the required packages
+## To view project on RStudio:
+- Clone this repo and run `setup.R` to install and attach the required packages
 - Individual scripts in `scripts` directory
     - `import_data.R` imports & tidies data, selects variables for analysis, writes tidy data to .csv 
     - `transform_data.R` prepares data from regression
