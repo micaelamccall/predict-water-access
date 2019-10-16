@@ -11,7 +11,7 @@ Install/attach required packages
 p<-.libPaths() #where your packages are installed 
 `%notin%` <- Negate(`%in%`)
 
-pkgs<-c('dplyr', 'tidyr', 'ggplot2', 'corrplot', 'psych', 'plotly') # packages needed for this project
+pkgs<-c('dplyr', 'tidyr', 'ggplot2', 'corrplot', 'psych', 'plotly', 'car') # packages needed for this project
 
 for (i in 1:length(pkgs)){
   pkg<-pkgs[[i]]
@@ -214,10 +214,10 @@ fullmodel<-lm(Life.expectancy.at.birth ~
 ```
 
 
-Then, we use backward elimination to select the variables that are predictive of life expectancy
+Then, we use backward elimination to select the variables that are predictive of life expectancy. Backward elimination uses the model selection strategy of minimizing AIC. It measures how much information about the data is lost in a model and thus assesses the trade off between model complexity and generalizability (overfitting v underfitting).  During each iteration, backward elimination drops the variable that gives the highest AIC until there is no significant drop in AIC. The model that yields the lowest AIC is retained in 'model'.
 
 ```{r}
-step(fullmodel,direction="backward",trace=10)
+model <- step(fullmodel,direction="backward",trace=10)
 ```
 
 
@@ -225,20 +225,56 @@ step(fullmodel,direction="backward",trace=10)
 Here, we assign this model to a new variable and inspect it closer to see which variables have the most significant relationship with life expectancy.
 
 ```{r}
-model = lm(Life.expectancy.at.birth ~ Access.to.electricity + 
-     Renewable.energy.consumption + Agricultural.land + CO2.emissions + 
-     Government.Effectiveness + PM2.5.air.pollution + Proportion.of.seats.held.by.women.in.parliaments + 
-     Unemployment + Cause.of.death.communicable.diseases.and.maternal.prenatal.and.nutrition.conditions + 
-     natural.resources.depletion, data = wb_transformed)
 summary(model)
 ```
 
-# Here, we inspect the residuals of the model
-It's important to inspect the residuals of the model. If they aren't normally distributed or follow a non-linear pattern, this indicates that the model is not fit optimally. 
+This output shows is that the model of life expectancy as a function of the above variables was significant (F(10,127) = 79.1, p < 0.01). In addition, R-squared  tells us that 86% of variance in life expectancy is accounted for by the variables in this model. This is quite high considering the messy/complicated system of country-wide social and economic factors. This seems to be a good model. 
+
+However, this isn't the end of the story. We need to make sure that the assumptions of linear models are satisfied in order to be sure that the model is meaningful. 
+
+One assumption to inspect is absence of collinearity. If predictors are highly correlated (collinearity) the statistical significance of the model is undermined. We can look at this by looking at the variance inflation factor (VIF) of each predictor. VIF measures how easily the predictor is predicted from a linear regression using the other predictors. Any predictors with a VIF above 4 should be removed from the model.
 
 ```{r}
-plot(fitted(model),residuals(model)) # with this plot, we are look for absence of a pattern
-hist(residuals(model)) # with the histogram, we're looking for a normal distribution
-qqnorm(residuals(model)) # with the qqnorm plot, we are looking for a straight line
+library(car)
+vifs<-bind_cols(as.data.frame(names(vif(model))), as.data.frame(unname(vif(model))));vifs
 ```
+
+Since several of these variables have a large VIF, some should be removed. We can do this with the following code, that removes the variable with the largest VIF and re-builds the model until no variables have  VIF above 4. 
+
+```{r}
+while(any(vifs$`unname(vif(model))`>4)){  #while any VIFS are greater than 4
+  vifs<-filter(vifs,  `unname(vif(model))`!=max(`unname(vif(model))`))  #take out the variable with the largest VIF
+  formula<-paste("Life.expectancy.at.birth ~", paste(vifs$`names(vif(model))`, collapse = ' + '), sep=' ')  #create a new formula without that variables
+  model<-lm(formula, data = wb_transformed) #create a new model
+  vifs=bind_cols(as.data.frame(names(vif(model))), as.data.frame(unname(vif(model))))  #create a new dataframe with the VIFs from the new model
+}
+
+summary(model)
+```
+
+
+This new model satisfies the assumption of no collinearity.
+
+Another assumption of that of homoskedasticity, which means that te residuals of the model have a similar amount of deviation from predicted values. To assess this assumption, we can look at a residual plot. This plot should look like a blob; if it doesn't, for instance if higher values have higher residuals, the variance would not be homoskedastic. 
+
+```{r}
+resid <- bind_cols(as.data.frame(fitted(model)), as.data.frame(residuals(model))) 
+
+p1 <- ggplot(resid,aes(x= fitted(model), y=residuals(model))) + geom_point() + labs(title='Residual Plot', x='Fitted Values', y='Residuals');p3
+# with this plot, we are look for absence of a pattern
+```
+
+
+
+Last, there is the assumption of the normality of residuals. The residuals should follow a normal distribution. If they don't, this indicates that the model is not fit optimally. 
+```{r}
+p2 <- ggplot(resid, aes(residuals(model))) + geom_histogram(bins=100) + labs(title = 'Histogram of Residuals')
+# with the histogram, we're looking for a normal distribution
+p3 <- ggplot(resid, aes(sample=residuals(model))) + geom_qq() + geom_qq_line() + labs(title = "Normal Q-Q Plot of Residuals") 
+# with the qqnorm plot, we are looking for a straight line
+
+gridExtra::grid.arrange(p3, p2, nrow=1)
+```
+
+
 

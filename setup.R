@@ -1,5 +1,5 @@
 p<-.libPaths() # assign location where you're installing packages
-pkgs<-c('dplyr', 'tidyr', 'ggplot2', 'corrplot', 'psych', 'plotly') # required packages
+pkgs<-c('dplyr', 'tidyr', 'ggplot2', 'corrplot', 'psych', 'plotly', 'car') # required packages
 `%notin%` <- Negate(`%in%`)
 
 # Checking if we are using the same version of R
