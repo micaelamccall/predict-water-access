@@ -70,6 +70,29 @@ wb_scaled<-wb_log%>%
                'Prevalence.of.undernourishment',
                'Life.expectancy.at.birth'), ~scale(.))
 
+wb_scaled<-wb_log%>%
+  mutate_at(c('Renewable.electricity.output',
+              'Access.to.electricity', 
+              'Renewable.energy.consumption',
+              'Terrestrial.and.marine.protected.areas', 
+              'Agricultural.land',  
+              'Individuals.using.the.Internet',
+              'CO2.emissions', 
+              'GDP.growth',
+              'Political.Stability.and.Absence.of.Terrorism',
+              'Rule.of.Law',
+              'Government.Effectiveness',
+              'PM2.5.air.pollution',
+              'Proportion.of.seats.held.by.women.in.parliaments',
+              'Access.to.clean.fuels.and.technologies.for.cooking',
+              'Labor.force.participation.rate',
+              'Unemployment',
+              'School.enrollment',
+              'Cause.of.death.communicable.diseases.and.maternal.prenatal.and.nutrition.conditions',
+              'natural.resources.depletion',
+              'Prevalence.of.undernourishment',
+              'Life.expectancy.at.birth'), ~(.-min(.))/(max(.)-min(.)))
+
 #check scaling
 check_scaling<-gather(wb_scaled, Measure, Value, -Country) # re-shape for plotting
 check_scaling$Measure<-as.factor(check_scaling$Measure) 

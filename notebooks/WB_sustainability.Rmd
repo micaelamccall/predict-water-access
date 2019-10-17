@@ -27,9 +27,8 @@ for (i in 1:length(pkgs)){
 
 # First, start by loading the data from the data folder
 ```{r}
-library(tidyr)
 library(dplyr)
-
+library(tidyr)
 header<- read.csv("../data/ESGData.csv", nrows = 1) # load the header separately
 wb <- read.csv("../data/ESGData.csv", header= FALSE, skip = 3084) # load the data itself
 colnames(wb)<-colnames(header) # assign column names
@@ -53,7 +52,8 @@ colnames(wb_tidy)
 
 # I took a look at how many NAs were in each variable and selected some variables with minimal missing values to use for further analysis. The code below creates a new data frame with the data selected for regression analysis.
 
-```{r}
+```{r warning=FALSE}
+library(ggplot2)
 wb_select <- wb_tidy%>%
   select(c(Country.Name,  #select columns
            `Renewable electricity output (% of total electricity output)`,
@@ -83,21 +83,24 @@ wb_select <- wb_tidy%>%
 
 # Next, we'll visually explore the data and check for skewness. 
 
-```{r}
+```{r, fig.width=8}
 wb_select<-read.csv("../data/wb_tidy.csv", row.names = 1)
 library(ggplot2)
 
 check_skew<-gather(wb_select, Measure, Value, -Country)  # reshape the dataframe for plotting
 
-for (i in unique(check_skew$Measure)){  #plot a histogram for each indicator
-  plot<-ggplot(check_skew[check_skew$Measure==i,], aes(Value))+
-    geom_histogram(bins = 100)+
-    labs(title=paste(i))
-  print(plot)
-}
+ggplot(check_skew, aes(Value))+ # make histograms
+  geom_histogram(bins = 200)+
+  facet_wrap(~Measure,strip.position = "bottom")+
+  coord_cartesian(ylim = c(0,50))
+
 
 rm(check_skew) #remove this dataframe so it doesnt clutter our environment
 ```
+
+
+
+
 Most of these variables are right skewed, so they could be transformed with a log transformation
 # Below, some columns are log-transformed
 ```{r}
@@ -110,13 +113,14 @@ wb_log<-wb_select%>%
                  Unemployment, 
                  Cause.of.death.communicable.diseases.and.maternal.prenatal.and.nutrition.conditions, 
                  natural.resources.depletion,
-                 Prevalence.of.undernourishment), ~log10(1+.))%>% # log after adding 1 to make all data positive
+                 Prevalence.of.undernourishment), 
+            ~log1p(1+.))%>% # log after adding 1 to make all data positive
   mutate_at(vars(Access.to.electricity, 
-                 Access.to.clean.fuels.and.technologies.for.cooking), ~log10(101-.)) 
-# left skewed variable transformed after subtracted from 110 to turn it into a left skew
+                 Access.to.clean.fuels.and.technologies.for.cooking), 
+            ~log1p(101-.)) # left skewed variable transformed after subtracted from 110 to turn it into a left skew
 ```
 
-# Next, the data is re-scaled to a mean of 0 and a standard deviation of 1 because regression performs better on data that is uniformly scaled
+# Next, the data is re-scaled between 0 and 1 because regression performs better on data that is uniformly scaled
 
 ```{r}
 wb_scaled<-wb_log%>%
@@ -140,13 +144,15 @@ wb_scaled<-wb_log%>%
                'Cause.of.death.communicable.diseases.and.maternal.prenatal.and.nutrition.conditions',
                'natural.resources.depletion',
                'Prevalence.of.undernourishment',
-               'Life.expectancy.at.birth'), ~scale(.))
+               'Life.expectancy.at.birth'), ~(.-min(.))/(max(.)-min(.)))
 
 ```
 
 # Here we visualize the transformed data to make sure the transformation worked as anticipated
-```{r}
-check_scaling<-gather(wb_scaled, Measure, Value, -Country) # re-shape for plotting
+```{r, fig.width=8}
+check_scaling<-wb_scaled%>%
+  select(-c(Access.to.clean.fuels.and.technologies.for.cooking, Access.to.electricity, Prevalence.of.undernourishment))%>%
+  gather(Measure, Value, -Country) # re-shape for plotting
 check_scaling$Measure<-as.factor(check_scaling$Measure) 
 
 ggplot(check_scaling, aes(Value))+ # make histograms
@@ -160,7 +166,7 @@ Now the data looks way more normally distributed
 
 # Start exploring the data by visualizing the correlations between each variable
 
-```{r}
+```{r, fig.width=8}
 wb_transformed<-read.csv("../data/wb_transformed.csv",row.names = 1)
 library(psych)
 pairs.panels(wb_transformed[,2:10],
@@ -174,8 +180,9 @@ library(corrplot)
 corrplot(cor(wb_transformed[2:10]),order="hclust",tl.col="black",tl.cex=.62)
 ```
 
+
 # Now I want to take a peek at the relationship between life expectancy and the other variables 
-```{r}
+```{r, fig.width=6}
 # re-shape the data for plotting
 wb_long<-gather(wb_transformed, Measure, Value, -Country, -Life.expectancy.at.birth)
 wb_long$Measure<-as.factor(wb_long$Measure)
@@ -185,71 +192,77 @@ ggplot(wb_long, aes(x=Value,y=Life.expectancy.at.birth))+
   facet_wrap(~Measure,strip.position = "bottom")
 ```
 
+
+Some of these variable clearly have a nonlinear relationship with life expectancy. Specifically, for CO2.emissions, Rule.of.law, Indiviuals.using.the.internet, and Government.effectiveness, their relationship with life expectancy follows a square root function. 
+
+Also, for Access.to.electricity, Renewable.energy.consumption, Access.to.clean.fuels.and.technologies.for.cooking, and Cause.of.death.communicable.diseases.and.maternal.prenatal.and.nutrition.conditions, they follow a negative square root relationship. These relationships can be added into the linear model. 
+
+
 # Now it's time to make the multilinear model. 
 
 I start by constructing a full model with all the variables
 
+
 ```{r}
 fullmodel<-lm(Life.expectancy.at.birth ~ 
                 Renewable.electricity.output + 
-                Access.to.electricity + 
-                Renewable.energy.consumption + 
+                I(sqrt(-(Access.to.electricity)+1)) + # square root of the negative plus 1 (move to positive side of x axis)
+                I(sqrt(-(Renewable.energy.consumption)+1)) + 
                 Terrestrial.and.marine.protected.areas +
                 Agricultural.land +
-                Individuals.using.the.Internet +
-                CO2.emissions +
+                I(sqrt(Individuals.using.the.Internet)) +
+                I(sqrt(CO2.emissions)) +
                 GDP.growth +
                 Political.Stability.and.Absence.of.Terrorism +
-                Rule.of.Law +
-                Government.Effectiveness +
+                I(sqrt(Rule.of.Law)) +
+                I(sqrt(Government.Effectiveness)) +
                 PM2.5.air.pollution +
                 Proportion.of.seats.held.by.women.in.parliaments +
-                Access.to.clean.fuels.and.technologies.for.cooking +
+                I(sqrt(-(Access.to.clean.fuels.and.technologies.for.cooking)+1)) +
                 Labor.force.participation.rate +
                 Unemployment +
                 School.enrollment +
-                Cause.of.death.communicable.diseases.and.maternal.prenatal.and.nutrition.conditions +
+                I(sqrt(-(Cause.of.death.communicable.diseases.and.maternal.prenatal.and.nutrition.conditions)+1)) +
                 natural.resources.depletion +
                 Prevalence.of.undernourishment, data=wb_transformed)
-```
 
+```
 
 Then, we use backward elimination to select the variables that are predictive of life expectancy. Backward elimination uses the model selection strategy of minimizing AIC. It measures how much information about the data is lost in a model and thus assesses the trade off between model complexity and generalizability (overfitting v underfitting).  During each iteration, backward elimination drops the variable that gives the highest AIC until there is no significant drop in AIC. The model that yields the lowest AIC is retained in 'model'.
 
-```{r}
+```{r include=FALSE}
 model <- step(fullmodel,direction="backward",trace=10)
 ```
 
 
 # Backward elimination shows us the combination of variables that can be used to predict the life expectancy. 
-Here, we assign this model to a new variable and inspect it closer to see which variables have the most significant relationship with life expectancy.
+Here, we inspect the model closer.
 
 ```{r}
 summary(model)
 ```
 
-This output shows is that the model of life expectancy as a function of the above variables was significant (F(10,127) = 79.1, p < 0.01). In addition, R-squared  tells us that 86% of variance in life expectancy is accounted for by the variables in this model. This is quite high considering the messy/complicated system of country-wide social and economic factors. This seems to be a good model. 
+This output shows is that the model of life expectancy as a function of the above variables was significant (F(11,126) = 99.71, p < 0.01). In addition, R-squared  tells us that 89% of variance in life expectancy is accounted for by the variables in this model. This is quite high considering the messy/complicated system of country-wide social and economic factors. This seems to be a good model. FYI I ran a similar model without square root relationship accounted for, and including the square roots improved the model (F(10,127) = 79.1, p < 0.01, R-squared for 0.86). 
 
 However, this isn't the end of the story. We need to make sure that the assumptions of linear models are satisfied in order to be sure that the model is meaningful. 
 
 One assumption to inspect is absence of collinearity. If predictors are highly correlated (collinearity) the statistical significance of the model is undermined. We can look at this by looking at the variance inflation factor (VIF) of each predictor. VIF measures how easily the predictor is predicted from a linear regression using the other predictors. Any predictors with a VIF above 4 should be removed from the model.
 
-```{r}
+```{r warning=FALSE}
 library(car)
-vifs<-bind_cols(as.data.frame(names(vif(model))), as.data.frame(unname(vif(model))));vifs
+vifs<-dplyr::bind_cols(as.data.frame(names(vif(model))), as.data.frame(unname(vif(model))));vifs
 ```
 
-Since several of these variables have a large VIF, some should be removed. We can do this with the following code, that removes the variable with the largest VIF and re-builds the model until no variables have  VIF above 4. 
+Since several of these variables have a large VIF, some should be removed. While there is no rule in terms of what is a good VIF threshold, the following code removes the variable with the largest VIF and re-builds the model until no variables have  VIF above 10. 
 
-```{r}
-while(any(vifs$`unname(vif(model))`>4)){  #while any VIFS are greater than 4
+```{r include=FALSE}
+while(any(vifs$`unname(vif(model))`>10)){  #while any VIFS are greater than 4
   vifs<-filter(vifs,  `unname(vif(model))`!=max(`unname(vif(model))`))  #take out the variable with the largest VIF
   formula<-paste("Life.expectancy.at.birth ~", paste(vifs$`names(vif(model))`, collapse = ' + '), sep=' ')  #create a new formula without that variables
-  model<-lm(formula, data = wb_transformed) #create a new model
+  newmodel<-lm(formula, data = wb_transformed) #create a new model
   vifs=bind_cols(as.data.frame(names(vif(model))), as.data.frame(unname(vif(model))))  #create a new dataframe with the VIFs from the new model
 }
-
-summary(model)
+finalmodel<-step(newmodel,direction="backward",trace=10)
 ```
 
 
@@ -258,23 +271,111 @@ This new model satisfies the assumption of no collinearity.
 Another assumption of that of homoskedasticity, which means that te residuals of the model have a similar amount of deviation from predicted values. To assess this assumption, we can look at a residual plot. This plot should look like a blob; if it doesn't, for instance if higher values have higher residuals, the variance would not be homoskedastic. 
 
 ```{r}
-resid <- bind_cols(as.data.frame(fitted(model)), as.data.frame(residuals(model))) 
+resid <- bind_cols(as.data.frame(fitted(finalmodel)), as.data.frame(residuals(finalmodel))) 
 
-p1 <- ggplot(resid,aes(x= fitted(model), y=residuals(model))) + geom_point() + labs(title='Residual Plot', x='Fitted Values', y='Residuals');p3
+p1 <- ggplot(resid,aes(x= fitted(finalmodel), y=residuals(finalmodel))) + geom_point() + labs(title='Residual Plot', x='Fitted Values', y='Residuals');p1
 # with this plot, we are look for absence of a pattern
 ```
 
 
 
 Last, there is the assumption of the normality of residuals. The residuals should follow a normal distribution. If they don't, this indicates that the model is not fit optimally. 
+
 ```{r}
-p2 <- ggplot(resid, aes(residuals(model))) + geom_histogram(bins=100) + labs(title = 'Histogram of Residuals')
+p2 <- ggplot(resid, aes(residuals(finalmodel))) + geom_histogram(bins=100) + labs(title = 'Histogram of Residuals')
 # with the histogram, we're looking for a normal distribution
-p3 <- ggplot(resid, aes(sample=residuals(model))) + geom_qq() + geom_qq_line() + labs(title = "Normal Q-Q Plot of Residuals") 
+p3 <- ggplot(resid, aes(sample=residuals(finalmodel))) + geom_qq() + geom_qq_line() + labs(title = "Normal Q-Q Plot of Residuals") 
 # with the qqnorm plot, we are looking for a straight line
 
 gridExtra::grid.arrange(p3, p2, nrow=1)
 ```
 
 
+Here is a summary of the new model:
+```{r}
+summary(finalmodel)
+```
+
+The final model significantly predicts life expectancy (F(8,120) = 130.7, p < 0.01) and accounts for 89% of variance in life expectancy.
+
+This output also tells at that there are main effects on life expectancy of renewable electricity output (beta=-0.05, p=0.05), agricultural land (beta=0.08, p=0.02), CO2 emissions (beta=-0.22, p=<0.01), government effectiveness score (beta=0.41, p<0.01), proportion of seats held by women (beta=0.011, p=0.02), unemployment rate (beta=-0.011, p<0.01), and cause of death by communicabel diseases, and maternal and prenatal nutrition conditions (beta=0.55, p<0.01).
+
+Some of these coefficients relate the predictor to life expectancy in a linear manner, while others modify the relationship between life expectancy and the square root of the predictor or the square root of the negative of the predictor. 
+
+It is important to keep in mind that several transformations have been done to this data before running the linear model. Looking back at the correlations in the original data can therefore be informative.
+
+```{r}
+eval<-read.csv("../data/wb_tidy.csv", row.names = 1)%>%  #re-import tidy
+  select(Country,                # select columns that were selected through linear modelling
+         Renewable.electricity.output, 
+         Agricultural.land, 
+         CO2.emissions, 
+         Government.Effectiveness, 
+         Proportion.of.seats.held.by.women.in.parliaments, 
+         Access.to.clean.fuels.and.technologies.for.cooking,
+         Unemployment, 
+         Cause.of.death.communicable.diseases.and.maternal.prenatal.and.nutrition.conditions,
+         Life.expectancy.at.birth)
+
+#print correlations between life expectancy and each predictor in original form, and compare to the coefficients
+
+for (i in 2:length(finalmodel$coefficients)){
+  var<-colnames(eval)[i]
+  col<-select(eval, var)
+  print(paste("Correlation between", var, "and life expectancy  :  ", cor(col, eval$Life.expectancy.at.birth) ))
+  print(paste("Coefficient of", names(finalmodel$coefficients)[i], "  :  ", unname(finalmodel$coefficients)[i]))
+}
+```
+
+# Visualize the results
+
+Here's a plot of the variables included in the model, the predictors are scaled whereas the outcome of life expectancy is the original value. 
+
+```{r, fig.width=10}
+library(plotly)
+wb_outcome<-read.csv("../data/wb_tidy.csv", row.names = 1)%>%   # store outcome
+  select(Country, Life.expectancy.at.birth)
+
+# dataframe with scaled predictors and original outcome
+for_plot<-left_join(wb_transformed, wb_outcome, by='Country')%>%
+  select(Country, 
+         Renewable.electricity.output, 
+         Agricultural.land, 
+         CO2.emissions, 
+         Government.Effectiveness, 
+         Proportion.of.seats.held.by.women.in.parliaments, 
+         Access.to.clean.fuels.and.technologies.for.cooking,
+         Unemployment, 
+         Cause.of.death.communicable.diseases.and.maternal.prenatal.and.nutrition.conditions,
+         Life.expectancy.at.birth.y)
+
+# Pretty column names for graph
+colnames(for_plot) <- c('Country',
+                        'Renewable energy consumption (% of total)',
+                        'Agricultural land (% of land area)', 
+                        'CO2 emissions (metric tons per capita)',
+                        'Government Effectiveness: Estimate',
+                        'Seats held by women in national parliaments (%)',
+                        'Access to clean fuels and technologies for cooking (%)',
+                        'Unemployment (% of total labor force)',
+                        'CoD by communicable diseases, maternal, and prenatal cond (%)',
+                        'Life expectancy at birth, total (years)')
+
+# Re-shape
+for_plot<-gather(for_plot, Measure, Value, -Country, -`Life expectancy at birth, total (years)`)
+for_plot$Measure<-as.factor(for_plot$Measure)
+
+p <-ggplotly(ggplot(for_plot, 
+                    aes(x = Value, 
+                        y = `Life expectancy at birth, total (years)`, 
+                        group = Measure, 
+                        text = paste("Country:",Country,'<br>', Measure, ':', Value, '<br>Life Expectancy:', `Life expectancy at birth, total (years)`, ' years')))+
+               geom_point(aes(color=Measure))+
+               geom_smooth(aes(color=Measure), method=lm,size=.7,se=F)+
+               labs(title= "Normalized predictors of life expectancy", x="Normalized Measure Value", y="Life expectancy at birth, total (years)")+
+               theme_minimal(), tooltip = "text")%>%
+  layout(legend = list(x=1,y=1,font=list(size=8)))
+
+p
+```
 
