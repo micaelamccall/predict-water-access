@@ -1,4 +1,4 @@
-# Predicting life expectancy from World Bank data
+# Predicting life expectancy from sustainability measures
 
 *R | Tidying data | Transforming data | Multilinear regression | Interactive graphing*
 
