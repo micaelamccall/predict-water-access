@@ -1,6 +1,6 @@
 # Predicting life expectancy from sustainability measures
 
-*R | Tidying data | Transforming data | Multilinear regression | Interactive graphing*
+*R | data cleaning | data transformation | multilinear regression | interactive graphing*
 
 # Intro
 
